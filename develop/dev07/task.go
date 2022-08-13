@@ -1,11 +1,17 @@
 package main
 
+import (
+	"fmt"
+	"sync"
+	"time"
+)
+
 /*
 === Or channel ===
 
 Реализовать функцию, которая будет объединять один или более done каналов в single канал если один из его составляющих каналов закроется.
 Одним из вариантов было бы очевидно написать выражение при помощи select, которое бы реализовывало эту связь,
-однако иногда неизестно общее число done каналов, с которыми вы работаете в рантайме.
+однако иногда неизвестно общее число done каналов, с которыми вы работаете в рантайме.
 В этом случае удобнее использовать вызов единственной функции, которая, приняв на вход один или более or каналов, реализовывала весь функционал.
 
 Определение функции:
@@ -30,9 +36,57 @@ start := time.Now()
 	sig(1*time.Minute),
 )
 
-fmt.Printf(“fone after %v”, time.Since(start))
+fmt.Printf(“done after %v”, time.Since(start))
 */
 
-func main() {
+// or принимает переменное количество каналов
+func or(channels ...<-chan interface{}) <-chan interface{} {
+	// Создаем single канал
+	singleChan := make(chan interface{})
+	// Создаем waitgroup и добавляем к счетчику группы текущее кол-во = числу каналов на вводе в функцию
+	wg := sync.WaitGroup{}
+	wg.Add(len(channels))
 
+	// В цикле горутина читает значения из канала и записывает их в singleChan
+	// Когда горутина закончила запись, счетчик wg уменьшается на 1, wg.Wait() ждет пока счетчик станет = 0
+	// затем закрываем канал
+	for _, channel := range channels {
+
+		go func(ch <-chan interface{}) {
+			for v := range ch {
+				singleChan <- v
+			}
+			fmt.Println("Done канал закрыт")
+			wg.Done()
+		}(channel)
+
+	}
+	wg.Wait()
+	close(singleChan)
+
+	return singleChan
+}
+
+func sig(after time.Duration) <-chan interface{} {
+	c := make(chan interface{})
+	go func() {
+		defer close(c)
+		time.Sleep(after)
+	}()
+	return c
+}
+
+func main() {
+	start := time.Now()
+	<-or(
+		sig(2*time.Second),
+		sig(5*time.Second),
+		sig(3*time.Second),
+		sig(4*time.Second),
+		sig(6*time.Second),
+		sig(7*time.Second),
+		sig(8*time.Second),
+		sig(1*time.Second),
+	)
+	fmt.Printf("Done after %v", time.Since(start))
 }
