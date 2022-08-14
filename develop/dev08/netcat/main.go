@@ -26,7 +26,7 @@ func main() {
 		protocol = "udp"
 	}
 	if *listen {
-		startServer(protocol)
+		startTcpServer(protocol)
 		return
 	}
 	if len(flag.Args()) < 2 {
@@ -39,7 +39,7 @@ func main() {
 	startClient(fmt.Sprintf("%s:%s", serverHost, serverPort), protocol)
 }
 
-func startServer(network string) {
+func startTcpServer(network string) {
 	addr := fmt.Sprintf("%s:%d", *host, *port)
 	listener, err := net.Listen(network, addr)
 
@@ -57,6 +57,39 @@ func startServer(network string) {
 		} else {
 			go processClient(conn)
 		}
+	}
+}
+
+func startUdpServer(network string) {
+	addr, err := net.ResolveUDPAddr(network, string(*port))
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := net.ListenUDP(network, addr)
+	if err != nil {
+		panic(err)
+	}
+	defer listener.Close()
+
+	log.Printf("Listening for connections on %s with %s network",
+		listener.LocalAddr().String(), listener.LocalAddr().Network())
+
+	buffer := make([]byte, 1024)
+	for {
+		n, conn, err := listener.ReadFromUDP(buffer)
+		fmt.Print(buffer[0 : n-1])
+
+		if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
+			fmt.Println("Exiting UDP server!")
+			return
+		}
+		if err != nil {
+			log.Printf("Error accepting connection from client: %s", err)
+		} else {
+			_, err := listener.WriteToUDP([]byte(os.Stdout), conn) // Застрял тут ;(
+		}
+
 	}
 }
 
